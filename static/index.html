@@ -1,0 +1,120 @@
+<html>
+  <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  </head>
+  <body>
+    <!-- Here will be appended the chart -->
+    <script type="text/javascript">
+        const chart = LightweightCharts.createChart(document.body, {
+            width: 1100,
+            height: 600,
+            layout: {
+                backgroundColor: 'white',
+                textColor: 'black',
+            },
+            grid: {
+                vertLines: {
+                    color: 'rgba(197, 203, 206, 0.5)',
+                },
+                horzLines: {
+                    color: 'rgba(197, 203, 206, 0.5)',
+                },
+            },
+            timeScale: {
+                timeVisible: true,
+                secondsVisible: true,
+            },
+        });
+
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: 'green',
+            downColor: 'red',
+            borderDownColor: 'red',
+            borderUpColor: 'green',
+            wickDownColor: 'red',
+            wickUpColor: 'green'
+        });
+        /**
+         * Fetch API. It's proxy of bitmex history,
+         * plus added trades also in responses object
+         */
+         setInterval(() => {
+            fetchData();
+        }, 5000);
+
+        const fetchData = () => {
+            fetch('http://127.0.0.1:3002/api')
+            .then(function(response) {
+               return response.json();
+            })
+            .then(function(data) {
+                /**
+                 * Sort back history as bitmex API is in reverse order true (to get last 750 candles).
+                 * Now we want them in correct order
+                 */
+                const history = data.history
+                    .map((candle => {
+                        return {
+                            time: new Date(candle.timestamp).getTime() / 1000,
+                            open: candle.open,
+                            high: candle.high,
+                            low: candle.low,
+                            close: candle.close
+                        }
+                    })).sort((a, b) => {
+                        return new Date(a.timestamp) - new Date(b.timestamp);
+                    });
+                candleSeries.setData(history);
+
+                /**
+                 * Plot trades on chart as marker with color.
+                 * Each point correspond of two trades (one to close and second to open)
+                 */
+                const trades = data.trades.map((trade, key) => {
+                    const entryTime = new Date(trade.timestamp).getTime() / 1000;
+                    let color;
+                    if (trade.position === 'FLAT') {
+                        color = 'orange';
+                        text = `# ${key} F - ${trade.rsi14}`;
+                
+                    } else if (trade.position === 'LONG') {
+                        color = 'red';
+                        text = `# ${key} S - ${trade.rsi14}`;
+                
+                    } else if (trade.position === 'SHORT') {
+                        color = 'green';
+                        text = `# ${key} B - ${trade.rsi14}`;
+                    }
+                    return {
+                        time: entryTime,
+                        position: 'aboveBar',
+                        color,
+                        shape: 'circle',
+                        text
+                    };
+                });
+
+                const exits = data.trades.map((trade, key) => {
+                    if (trade.exitDate) {
+                        const exitTime = new Date(trade.exitDate).getTime() / 1000;
+                        let color = 'grey';
+                        let text = `Exit`;
+                        return {
+                            time: exitTime,
+                            position: 'aboveBar',
+                            color,
+                            shape: 'square',
+                            text
+                        };
+
+                    }
+                }).filter(t => t);
+                candleSeries.setMarkers([...trades, ...exits]);
+            });
+        }
+        fetchData();
+
+</script>
+  </body>
+</html>
